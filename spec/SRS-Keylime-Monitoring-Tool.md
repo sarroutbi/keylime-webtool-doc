@@ -104,6 +104,7 @@ The System transforms Keylime from a CLI-driven security tool into a visual oper
 | FR-068 | Capacity planning projections | SHOULD | System Performance - Key Metrics |
 | FR-069 | Agent state machine visualization (pull + push) | MUST | Keylime - Agent State Machine / Push Mode |
 | FR-070 | API version distribution visualization | MUST | Integration Status - Backend Connectivity |
+| FR-071 | AI Assistant with Keylime MCP integration | SHOULD | AI Assistant - Conversational Interface |
 
 ### 2.2 Non-Functional Requirements
 
@@ -235,7 +236,7 @@ Feature: KPI Data Auto-Refresh
 
 ### FR-003: Sidebar Navigation
 
-**Description:** The System MUST provide a persistent sidebar navigation with the following modules: Dashboard (Fleet overview), Agents (Fleet management), Attestations (Analytics), Policies (IMA & MB), Certificates (TLS/TPM certs), Alerts (Alert lifecycle), Performance (System metrics), Audit Log (Security events), Integrations (Backend status), and Settings (Configuration).
+**Description:** The System MUST provide a persistent sidebar navigation with the following modules: Dashboard (Fleet overview), Agents (Fleet management), Attestations (Analytics), Policies (IMA & MB), Certificates (TLS/TPM certs), Alerts (Alert lifecycle), Performance (System metrics), Audit Log (Security events), Integrations (Backend status), Settings (Configuration), and AI Assistant (Keylime MCP conversational interface).
 
 **Trace:** Dashboard - Navigation Structure
 
@@ -250,7 +251,7 @@ Feature: Sidebar Navigation
 
   Scenario: All core modules accessible
     Given the user is authenticated
-    Then the sidebar MUST display navigation entries for all 10 core modules
+    Then the sidebar MUST display navigation entries for all 11 core modules
     And each entry MUST route to its corresponding view
 
   Scenario: Unauthenticated user cannot access sidebar
@@ -2050,6 +2051,76 @@ Feature: API Version Distribution Visualization
     When the user views the API Version Distribution
     Then the unknown version MUST be displayed in a separate "Unknown" category
     And a WARNING MUST be raised indicating an unrecognized API version
+```
+
+### FR-071: AI Assistant with Keylime MCP Integration
+
+**Description:** The System SHOULD provide an AI Assistant module accessible from the sidebar that offers a conversational interface for interacting with the Keylime infrastructure via the Model Context Protocol (MCP). The assistant MUST connect to a Keylime MCP server that exposes Keylime Verifier and Registrar operations as MCP tools. The assistant MUST allow users to query fleet status, investigate attestation failures, inspect agent details, review policies, and request recommended actions using natural language. All assistant interactions MUST respect the user's RBAC role — the MCP server MUST enforce the same permission boundaries as the REST API. The assistant MUST NOT execute write operations (policy changes, agent actions) without explicit user confirmation. All assistant queries and responses MUST be logged in the audit trail.
+
+**Trace:** AI Assistant - Conversational Interface
+
+```gherkin
+Feature: AI Assistant with Keylime MCP
+
+  Scenario: Query fleet status via natural language
+    Given the user is authenticated with the Operator role
+    And the AI Assistant view is displayed
+    When the user types "How many agents are currently failing?"
+    Then the assistant MUST query the Keylime MCP server for agent fleet status
+    And the response MUST display the count of agents in FAILED, INVALID_QUOTE, and TENANT_FAILED states
+    And the response MUST include agent identifiers for failed agents
+
+  Scenario: Investigate attestation failure
+    Given the user is viewing the AI Assistant
+    When the user types "Why did agent d432fbb3 fail its last attestation?"
+    Then the assistant MUST retrieve the agent's attestation history and failure details via MCP
+    And the response MUST include the failure type, timestamp, and affected pipeline stage
+    And the assistant SHOULD suggest a recommended action based on the failure type
+
+  Scenario: Request policy information
+    Given the user is viewing the AI Assistant
+    When the user types "Which agents are assigned to policy production-v1?"
+    Then the assistant MUST query the policy assignment matrix via MCP
+    And the response MUST list the agents assigned to "production-v1"
+
+  Scenario: Write operation requires explicit confirmation
+    Given the user has the Admin role
+    And the user is viewing the AI Assistant
+    When the user types "Reactivate agent a1b2c3d4"
+    Then the assistant MUST display a confirmation prompt: "This will reactivate agent a1b2c3d4. Confirm? [Yes/No]"
+    And the assistant MUST NOT execute the action until the user confirms
+    And the confirmation and outcome MUST be recorded in the audit log
+
+  Scenario: RBAC enforcement on assistant queries
+    Given the user has the Viewer role
+    When the user types "Delete agent a1b2c3d4" in the AI Assistant
+    Then the assistant MUST deny the request with "Insufficient permissions — Admin role required for agent deletion"
+    And the denied attempt MUST be recorded in the audit log
+
+  Scenario: MCP server unreachable
+    Given the Keylime MCP server is not configured or unreachable
+    When the user navigates to the AI Assistant view
+    Then the view MUST display "AI Assistant unavailable — MCP server not connected"
+    And a "Configure MCP" link SHOULD direct Admin users to the Settings view
+
+  Scenario: Contextual follow-up queries
+    Given the user previously asked "Show me all failing agents"
+    And the assistant displayed 3 failing agents
+    When the user types "Tell me more about the first one"
+    Then the assistant MUST resolve the reference to the first agent from the previous response
+    And the assistant MUST retrieve and display the agent's detail information via MCP
+
+  Scenario: Assistant interaction logged in audit trail
+    Given the user submits a query to the AI Assistant
+    When the assistant processes the query and returns a response
+    Then an audit log entry MUST be created with action "AI_ASSISTANT_QUERY"
+    And the entry MUST include the actor, query summary, resources accessed, and timestamp
+    And raw query text MUST NOT be stored if it may contain sensitive data
+
+  Scenario: AI Assistant not available for unauthenticated users
+    Given the user is not authenticated
+    When the user attempts to access the AI Assistant route
+    Then the System MUST redirect the user to the login page
 ```
 
 ---
